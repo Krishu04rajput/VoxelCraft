@@ -1,22 +1,167 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>VoxelCraft</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="utf-8">
+<title>VoxelCraft</title>
+<style>
+html,body{margin:0;overflow:hidden;background:#000;font-family:arial}
+#cross{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;font-size:20px}
+#hotbar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:6px}
+.slot{width:44px;height:44px;border:2px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+.active{border-color:yellow}
+</style>
 </head>
 <body>
-  <div id="name">Player</div>
-  <div id="crosshair">+</div>
+<div id="cross">+</div>
+<div id="hotbar">
+  <div class="slot active">1</div>
+  <div class="slot">2</div>
+  <div class="slot">3</div>
+</div>
 
-  <div id="hotbar">
-    <div class="slot active">1</div>
-    <div class="slot">2</div>
-    <div class="slot">3</div>
-    <div class="slot">4</div>
-  </div>
+<script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+<script>
+// ================= SCENE =================
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87ceeb);
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+document.body.appendChild(renderer.domElement);
 
-  <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
-  <script src="main.js"></script>
+// ================= LIGHT =================
+scene.add(new THREE.AmbientLight(0xffffff,.4));
+const sun=new THREE.DirectionalLight(0xffffff,1);
+sun.position.set(50,100,30);
+scene.add(sun);
+
+// ================= PLAYER =================
+const player={
+  pos:new THREE.Vector3(0,20,0),
+  vel:new THREE.Vector3(),
+  onGround:false,
+  eye:1.6
+};
+
+// ================= INPUT =================
+const keys={};
+addEventListener("keydown",e=>keys[e.code]=true);
+addEventListener("keyup",e=>keys[e.code]=false);
+document.body.onclick=()=>document.body.requestPointerLock();
+
+// ================= MOUSE =================
+let yaw=0,pitch=0;
+addEventListener("mousemove",e=>{
+  if(document.pointerLockElement!==document.body)return;
+  yaw-=e.movementX*0.002;
+  pitch-=e.movementY*0.002;
+  pitch=Math.max(-1.5,Math.min(1.5,pitch));
+});
+
+// ================= BLOCKS =================
+const blocks=new Map();
+const geo=new THREE.BoxGeometry(1,1,1);
+const mats=[
+  new THREE.MeshStandardMaterial({color:0x3aa655}), // grass
+  new THREE.MeshStandardMaterial({color:0x8b4513}), // dirt
+  new THREE.MeshStandardMaterial({color:0x888888})  // stone
+];
+const key=(x,y,z)=>`${x},${y},${z}`;
+function addBlock(x,y,z,t){
+  const m=new THREE.Mesh(geo,mats[t]);
+  m.position.set(x,y,z);
+  scene.add(m);
+  blocks.set(key(x,y,z),m);
+}
+
+// ================= TERRAIN (CHUNKS) =================
+function height(x,z){
+  return Math.floor(
+    Math.sin(x*.15)+Math.cos(z*.15)+Math.sin((x+z)*.1)
+  )+3;
+}
+for(let x=-32;x<32;x++)
+for(let z=-32;z<32;z++){
+  const h=height(x,z);
+  for(let y=0;y<=h;y++){
+    addBlock(x,y,z,y==h?0:y>h-2?1:2);
+  }
+}
+
+// ================= HOTBAR =================
+let selected=0;
+const slots=[...document.querySelectorAll(".slot")];
+addEventListener("keydown",e=>{
+  if(e.key>="1"&&e.key<="3"){
+    selected=e.key-1;
+    slots.forEach((s,i)=>s.classList.toggle("active",i===selected));
+  }
+});
+
+// ================= RAYCAST =================
+const ray=new THREE.Raycaster();
+addEventListener("mousedown",e=>{
+  ray.setFromCamera({x:0,y:0},camera);
+  const hit=ray.intersectObjects([...blocks.values()])[0];
+  if(!hit)return;
+
+  const p=hit.object.position;
+  if(e.button===0){
+    scene.remove(hit.object);
+    blocks.delete(key(p.x,p.y,p.z));
+  }
+  if(e.button===2){
+    const n=hit.face.normal;
+    addBlock(p.x+n.x,p.y+n.y,p.z+n.z,selected);
+  }
+});
+addEventListener("contextmenu",e=>e.preventDefault());
+
+// ================= LOOP =================
+function animate(){
+  requestAnimationFrame(animate);
+
+  camera.rotation.order="YXZ";
+  camera.rotation.y=yaw;
+  camera.rotation.x=pitch;
+
+  const forward=new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.y=0; forward.normalize();
+  const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0));
+
+  const speed=keys.ShiftLeft?.15:.08;
+  if(keys.KeyW)player.pos.add(forward.clone().multiplyScalar(speed));
+  if(keys.KeyS)player.pos.add(forward.clone().multiplyScalar(-speed));
+  if(keys.KeyA)player.pos.add(right.clone().multiplyScalar(-speed));
+  if(keys.KeyD)player.pos.add(right.clone().multiplyScalar(speed));
+
+  // gravity
+  player.vel.y-=0.02;
+  if(keys.Space&&player.onGround){player.vel.y=.35;player.onGround=false}
+  player.pos.add(player.vel);
+
+  if(player.pos.y<height(Math.round(player.pos.x),Math.round(player.pos.z))+1){
+    player.pos.y=height(Math.round(player.pos.x),Math.round(player.pos.z))+1;
+    player.vel.y=0;
+    player.onGround=true;
+  }
+
+  camera.position.set(
+    player.pos.x,
+    player.pos.y+player.eye,
+    player.pos.z
+  );
+
+  renderer.render(scene,camera);
+}
+animate();
+
+addEventListener("resize",()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
 </body>
 </html>
