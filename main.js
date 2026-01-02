@@ -1,193 +1,107 @@
-// ===== SCENE =====
+// ===== BASIC SETUP =====
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
-const camera = new THREE.PerspectiveCamera(
-  75, window.innerWidth / window.innerHeight, 0.1, 1000
-);
-
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
+const camera = new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
 document.body.appendChild(renderer.domElement);
 
 // ===== LIGHT =====
-scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-const sun = new THREE.DirectionalLight(0xffffff, 0.9);
-sun.position.set(20, 30, 10);
+scene.add(new THREE.AmbientLight(0xffffff,0.4));
+const sun = new THREE.DirectionalLight(0xffffff,0.8);
+sun.position.set(30,50,20);
 scene.add(sun);
 
-// ===== BLOCK TYPES =====
-const BLOCKS = [
-  { color: 0x22aa22 },
-  { color: 0x8b4513 },
-  { color: 0x888888 }
-];
+// ===== TEXTURES (ATLAS STYLE) =====
+const loader = new THREE.TextureLoader();
+const grass = loader.load("https://i.imgur.com/8Ih4F8T.png");
+grass.magFilter = THREE.NearestFilter;
 
-let selectedBlock = 0;
-const slots = document.querySelectorAll(".slot");
-document.addEventListener("keydown", e => {
-  if (e.key >= "1" && e.key <= "3") {
-    selectedBlock = Number(e.key) - 1;
-    slots.forEach((s,i)=>s.classList.toggle("active", i===selectedBlock));
-  }
-});
+// ===== BLOCK SYSTEM =====
+const geo = new THREE.BoxGeometry(1,1,1);
+const mat = new THREE.MeshStandardMaterial({map:grass});
+const blocks = new Map();
+const key=(x,y,z)=>`${x},${y},${z}`;
 
-// ===== WORLD =====
-const geometry = new THREE.BoxGeometry(1,1,1);
-const blocks = [];
-const blockMap = new Map();
-
-function key(x,y,z){ return `${x},${y},${z}`; }
-
-function addBlock(x,y,z,type){
-  const mat = new THREE.MeshStandardMaterial({ color: BLOCKS[type].color });
-  const mesh = new THREE.Mesh(geometry, mat);
-  mesh.position.set(x,y,z);
-  scene.add(mesh);
-  blocks.push(mesh);
-  blockMap.set(key(x,y,z), mesh);
+function addBlock(x,y,z){
+  const m=new THREE.Mesh(geo,mat);
+  m.position.set(x,y,z);
+  scene.add(m);
+  blocks.set(key(x,y,z),m);
 }
 
-function removeBlock(mesh){
-  scene.remove(mesh);
-  blocks.splice(blocks.indexOf(mesh),1);
-  blockMap.delete(key(
-    mesh.position.x,
-    mesh.position.y,
-    mesh.position.z
-  ));
+// ===== CHUNK SYSTEM (SIMPLE) =====
+function generateChunk(cx,cz){
+  for(let x=0;x<16;x++)
+    for(let z=0;z<16;z++)
+      addBlock(cx*16+x,0,cz*16+z);
 }
-
-// Ground
-for(let x=-15;x<=15;x++){
-  for(let z=-15;z<=15;z++){
-    addBlock(x,0,z,0);
-  }
-}
+generateChunk(0,0);
 
 // ===== PLAYER =====
-const player = {
-  height: 1.7,
-  radius: 0.3,
-  velocity: new THREE.Vector3(),
-  onGround: false
-};
-
-camera.position.set(0, 3, 5);
+let yaw=0,pitch=0;
+const vel={y:0};
+let onGround=false;
+camera.position.set(8,3,8);
 
 // ===== INPUT =====
-let keys = {};
-document.addEventListener("keydown", e=>keys[e.code]=true);
-document.addEventListener("keyup", e=>keys[e.code]=false);
+const keys={};
+addEventListener("keydown",e=>keys[e.code]=true);
+addEventListener("keyup",e=>keys[e.code]=false);
 
-// ===== MOUSE (PEAK CONTROL) =====
-let yaw = 0;
-let pitch = 0;
-const sensitivity = 0.002;
-
-document.body.addEventListener("click",()=>{
-  document.body.requestPointerLock();
-});
-
-document.addEventListener("mousemove", e=>{
+// Mouse
+document.body.onclick=()=>document.body.requestPointerLock();
+addEventListener("mousemove",e=>{
   if(document.pointerLockElement!==document.body) return;
-
-  yaw -= e.movementX * sensitivity;
-  pitch -= e.movementY * sensitivity;
-
-  pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
-  camera.rotation.set(pitch, yaw, 0);
+  yaw-=e.movementX*0.002;
+  pitch-=e.movementY*0.002;
+  pitch=Math.max(-1.5,Math.min(1.5,pitch));
+  camera.rotation.set(pitch,yaw,0);
 });
 
-// ===== RAYCAST =====
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2(0,0);
-
-document.addEventListener("mousedown", e=>{
-  raycaster.setFromCamera(mouse, camera);
-  const hits = raycaster.intersectObjects(blocks);
-  if(!hits.length) return;
-
-  const hit = hits[0];
-
-  if(e.button===0){
-    removeBlock(hit.object);
-  }
-
-  if(e.button===2){
-    const p = hit.object.position.clone().add(hit.face.normal);
-    const x=Math.round(p.x), y=Math.round(p.y), z=Math.round(p.z);
-    if(!blockMap.has(key(x,y,z))){
-      addBlock(x,y,z,selectedBlock);
+// ===== INVENTORY =====
+let slot=0;
+document.querySelectorAll(".slot").forEach((s,i)=>{
+  addEventListener("keydown",e=>{
+    if(e.key===(i+1)+""){
+      slot=i;
+      document.querySelectorAll(".slot").forEach(x=>x.classList.remove("active"));
+      s.classList.add("active");
     }
-  }
+  });
 });
 
-document.addEventListener("contextmenu", e=>e.preventDefault());
-
-// ===== COLLISION =====
-function checkCollision(pos){
-  const minX = Math.floor(pos.x - player.radius);
-  const maxX = Math.floor(pos.x + player.radius);
-  const minY = Math.floor(pos.y - player.height);
-  const maxY = Math.floor(pos.y);
-  const minZ = Math.floor(pos.z - player.radius);
-  const maxZ = Math.floor(pos.z + player.radius);
-
-  for(let x=minX;x<=maxX;x++){
-    for(let y=minY;y<=maxY;y++){
-      for(let z=minZ;z<=maxZ;z++){
-        if(blockMap.has(key(x,y,z))){
-          return true;
-        }
-      }
-    }
-  }
-  return false;
-}
-
-// ===== LOOP =====
+// ===== GAME LOOP =====
 function animate(){
   requestAnimationFrame(animate);
 
-  const speed = 0.08;
-  const gravity = 0.015;
+  let speed=keys.ShiftLeft?0.15:0.08;
+  const dir=new THREE.Vector3(
+    (keys.KeyA?-1:0)+(keys.KeyD?1:0),
+    0,
+    (keys.KeyW?-1:0)+(keys.KeyS?1:0)
+  ).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
 
-  let move = new THREE.Vector3();
-  if(keys.KeyW) move.z -= speed;
-  if(keys.KeyS) move.z += speed;
-  if(keys.KeyA) move.x -= speed;
-  if(keys.KeyD) move.x += speed;
+  camera.position.add(dir.multiplyScalar(speed));
 
-  move.applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+  // Jump + gravity
+  vel.y-=0.015;
+  if(keys.Space && onGround){ vel.y=0.3; onGround=false; }
+  camera.position.y+=vel.y;
 
-  // Horizontal collision
-  const nextPos = camera.position.clone().add(move);
-  if(!checkCollision(new THREE.Vector3(nextPos.x, camera.position.y, nextPos.z))){
-    camera.position.x = nextPos.x;
-    camera.position.z = nextPos.z;
-  }
-
-  // Gravity
-  player.velocity.y -= gravity;
-  camera.position.y += player.velocity.y;
-
-  if(checkCollision(camera.position)){
-    camera.position.y = Math.ceil(camera.position.y);
-    player.velocity.y = 0;
-    player.onGround = true;
-  } else {
-    player.onGround = false;
+  if(camera.position.y<=1.7){
+    camera.position.y=1.7;
+    vel.y=0;
+    onGround=true;
   }
 
   renderer.render(scene,camera);
 }
-
 animate();
 
-// ===== RESIZE =====
-window.addEventListener("resize",()=>{
-  camera.aspect = window.innerWidth/window.innerHeight;
+addEventListener("resize",()=>{
+  camera.aspect=innerWidth/innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth,window.innerHeight);
+  renderer.setSize(innerWidth,innerHeight);
 });
