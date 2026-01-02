@@ -1,8 +1,10 @@
-// Scene
+// ==================
+// BASIC SETUP
+// ==================
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
-// Camera
+// Camera (player)
 const camera = new THREE.PerspectiveCamera(
   75,
   window.innerWidth / window.innerHeight,
@@ -12,34 +14,52 @@ const camera = new THREE.PerspectiveCamera(
 camera.position.set(0, 2, 5);
 
 // Renderer
-const renderer = new THREE.WebGLRenderer();
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Lights
+// ==================
+// LIGHTING
+// ==================
 scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(10, 20, 10);
-scene.add(light);
 
-// Ground blocks
-const geometry = new THREE.BoxGeometry(1, 1, 1);
-const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+const sun = new THREE.DirectionalLight(0xffffff, 1);
+sun.position.set(10, 20, 10);
+scene.add(sun);
 
+// ==================
+// BLOCK GEOMETRY
+// ==================
+const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+const grassMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57 });
+
+// Ground
 for (let x = -10; x <= 10; x++) {
   for (let z = -10; z <= 10; z++) {
-    const block = new THREE.Mesh(geometry, groundMaterial);
+    const block = new THREE.Mesh(blockGeo, grassMat);
     block.position.set(x, -1, z);
     scene.add(block);
   }
 }
 
-// Controls
-let keys = {};
+// Test block
+const testBlock = new THREE.Mesh(
+  blockGeo,
+  new THREE.MeshStandardMaterial({ color: 0x006400 })
+);
+testBlock.position.set(0, 0, 0);
+scene.add(testBlock);
+
+// ==================
+// CONTROLS (KEYBOARD)
+// ==================
+const keys = {};
 document.addEventListener("keydown", e => keys[e.code] = true);
 document.addEventListener("keyup", e => keys[e.code] = false);
 
-// Mouse look
+// ==================
+// MOUSE LOOK (FPS)
+// ==================
 let yaw = 0;
 let pitch = 0;
 
@@ -49,39 +69,57 @@ document.body.addEventListener("click", () => {
 
 document.addEventListener("mousemove", e => {
   if (document.pointerLockElement === document.body) {
-    yaw -= e.movementX * 0.002;
-    pitch -= e.movementY * 0.002;
+    yaw -= e.movementX * 0.0015;
+    pitch -= e.movementY * 0.0015;
+
+    // Limit up/down look
     pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
   }
 });
 
-// Movement
+// ==================
+// PLAYER MOVEMENT
+// ==================
+const speed = 0.06;
+
 function updatePlayer() {
   camera.rotation.set(pitch, yaw, 0);
 
-  const speed = 0.1;
-  const direction = new THREE.Vector3();
+  const dir = new THREE.Vector3();
 
-  if (keys["KeyW"]) direction.z -= speed;
-  if (keys["KeyS"]) direction.z += speed;
-  if (keys["KeyA"]) direction.x -= speed;
-  if (keys["KeyD"]) direction.x += speed;
+  if (keys["KeyW"]) dir.z -= 1;
+  if (keys["KeyS"]) dir.z += 1;
+  if (keys["KeyA"]) dir.x -= 1;
+  if (keys["KeyD"]) dir.x += 1;
 
-  direction.applyEuler(camera.rotation);
-  camera.position.add(direction);
+  if (dir.length() > 0) {
+    dir.normalize();
+    dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+
+    camera.position.x += dir.x * speed;
+    camera.position.z += dir.z * speed;
+  }
+
+  // Lock player height (no flying yet)
+  camera.position.y = 2;
 }
 
-// Resize
+// ==================
+// RESIZE SUPPORT
+// ==================
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Game loop
+// ==================
+// GAME LOOP
+// ==================
 function animate() {
   requestAnimationFrame(animate);
   updatePlayer();
   renderer.render(scene, camera);
 }
+
 animate();
