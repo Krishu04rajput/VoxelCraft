@@ -14,7 +14,7 @@ sun.position.set(30, 50, 20);
 scene.add(sun);
 
 // ===== TEXTURES =====
-function makeTex(a,b){
+function tex(a,b){
   const c=document.createElement("canvas");
   c.width=c.height=64;
   const x=c.getContext("2d");
@@ -25,16 +25,15 @@ function makeTex(a,b){
     x.fillRect(Math.random()*64,Math.random()*64,2,2);
   }
   const t=new THREE.CanvasTexture(c);
-  t.magFilter=THREE.NearestFilter;
-  t.minFilter=THREE.NearestFilter;
+  t.magFilter=t.minFilter=THREE.NearestFilter;
   return t;
 }
 
 const TEX=[
-  makeTex("#3aa655","#2e8b57"),
-  makeTex("#8b4513","#5c3317"),
-  makeTex("#888","#666"),
-  makeTex("#e5d38c","#c2b280")
+  tex("#3aa655","#2e8b57"),
+  tex("#8b4513","#5c3317"),
+  tex("#888","#666"),
+  tex("#e5d38c","#c2b280")
 ];
 
 // ===== BLOCKS =====
@@ -52,57 +51,63 @@ function addBlock(x,y,z,t){
   blocks.set(key(x,y,z),m);
 }
 
+// Ground
 for(let x=-16;x<16;x++)
   for(let z=-16;z<16;z++)
     addBlock(x,0,z,0);
 
-// ===== PLAYER =====
-let yaw=0, pitch=0;
-let vy=0, onGround=false;
-camera.position.set(0,3,5);
+// ===== PLAYER BODY (SEPARATE FROM CAMERA) =====
+const player = {
+  x: 0,
+  y: 1,
+  z: 5,
+  vy: 0,
+  onGround: false,
+  eyeHeight: 1.6
+};
+
+// ===== CAMERA ROTATION =====
+let yaw = 0, pitch = 0;
+let targetYaw = 0, targetPitch = 0;
+const sensitivity = 0.002;
+const smooth = 0.15;
 
 // ===== INPUT =====
-const keys={};
-addEventListener("keydown",e=>keys[e.code]=true);
-addEventListener("keyup",e=>keys[e.code]=false);
+const keys = {};
+addEventListener("keydown", e => keys[e.code] = true);
+addEventListener("keyup", e => keys[e.code] = false);
 
-// ===== PRO MOUSE CONTROL =====
-let targetYaw=0, targetPitch=0;
-const sensitivity=0.002;
-const smooth=0.15; // lower = smoother
-
-document.body.addEventListener("click",()=>{
-  if(document.pointerLockElement!==document.body)
+document.body.onclick = () => {
+  if (document.pointerLockElement !== document.body)
     document.body.requestPointerLock();
-});
+};
 
-addEventListener("mousemove",e=>{
-  if(document.pointerLockElement!==document.body) return;
+addEventListener("mousemove", e => {
+  if (document.pointerLockElement !== document.body) return;
 
   targetYaw   -= e.movementX * sensitivity;
   targetPitch -= e.movementY * sensitivity;
-
-  targetPitch=Math.max(-1.5,Math.min(1.5,targetPitch));
+  targetPitch = Math.max(-1.5, Math.min(1.5, targetPitch));
 });
 
 // ===== HOTBAR =====
-let selected=0;
-const slots=document.querySelectorAll(".slot");
-addEventListener("keydown",e=>{
-  if(e.key>="1"&&e.key<="4"){
-    selected=e.key-1;
+let selected = 0;
+const slots = document.querySelectorAll(".slot");
+addEventListener("keydown", e => {
+  if (e.key >= "1" && e.key <= "4") {
+    selected = e.key - 1;
     slots.forEach((s,i)=>s.classList.toggle("active",i===selected));
   }
 });
 
 // ===== RAYCAST =====
-const ray=new THREE.Raycaster();
-addEventListener("mousedown",e=>{
-  ray.setFromCamera({x:0,y:0},camera);
-  const hit=ray.intersectObjects([...blocks.values()])[0];
-  if(!hit) return;
+const ray = new THREE.Raycaster();
+addEventListener("mousedown", e => {
+  ray.setFromCamera({x:0,y:0}, camera);
+  const hit = ray.intersectObjects([...blocks.values()])[0];
+  if (!hit) return;
 
-  if(e.button===0){
+  if (e.button === 0) {
     scene.remove(hit.object);
     blocks.delete(key(
       hit.object.position.x,
@@ -111,49 +116,63 @@ addEventListener("mousedown",e=>{
     ));
   }
 
-  if(e.button===2){
-    const p=hit.object.position.clone().add(hit.face.normal);
-    const x=Math.round(p.x),y=Math.round(p.y),z=Math.round(p.z);
-    if(!blocks.has(key(x,y,z)))
-      addBlock(x,y,z,selected);
+  if (e.button === 2) {
+    const p = hit.object.position.clone().add(hit.face.normal);
+    const x=Math.round(p.x), y=Math.round(p.y), z=Math.round(p.z);
+    if (!blocks.has(key(x,y,z))) addBlock(x,y,z,selected);
   }
 });
-addEventListener("contextmenu",e=>e.preventDefault());
+addEventListener("contextmenu", e => e.preventDefault());
 
-// ===== LOOP =====
+// ===== GAME LOOP =====
 function animate(){
   requestAnimationFrame(animate);
 
-  // Smooth camera
-  yaw += (targetYaw - yaw) * smooth;
+  // Smooth look
+  yaw   += (targetYaw - yaw) * smooth;
   pitch += (targetPitch - pitch) * smooth;
   camera.rotation.set(pitch, yaw, 0);
 
-  const speed=keys.ShiftLeft?0.15:0.08;
-  const move=new THREE.Vector3(
+  // Movement
+  const speed = keys.ShiftLeft ? 0.15 : 0.08;
+  const move = new THREE.Vector3(
     (keys.KeyA?-1:0)+(keys.KeyD?1:0),
     0,
     (keys.KeyW?-1:0)+(keys.KeyS?1:0)
-  ).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
+  ).applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
 
-  camera.position.add(move.multiplyScalar(speed));
+  player.x += move.x * speed;
+  player.z += move.z * speed;
 
-  vy-=0.015;
-  if(keys.Space && onGround){ vy=0.3; onGround=false; }
-  camera.position.y+=vy;
-
-  if(camera.position.y<1.7){
-    camera.position.y=1.7;
-    vy=0;
-    onGround=true;
+  // Gravity
+  player.vy -= 0.015;
+  if (keys.Space && player.onGround) {
+    player.vy = 0.3;
+    player.onGround = false;
   }
 
-  renderer.render(scene,camera);
+  player.y += player.vy;
+
+  if (player.y < 1) {
+    player.y = 1;
+    player.vy = 0;
+    player.onGround = true;
+  }
+
+  // 🔒 CAMERA Y LOCK (THE FIX)
+  camera.position.set(
+    player.x,
+    player.y + player.eyeHeight,
+    player.z
+  );
+
+  renderer.render(scene, camera);
 }
+
 animate();
 
-addEventListener("resize",()=>{
-  camera.aspect=innerWidth/innerHeight;
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
+  renderer.setSize(innerWidth, innerHeight);
 });
