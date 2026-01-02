@@ -1,54 +1,39 @@
-body {
-  margin: 0;
-  overflow: hidden;
-  background: black;
-  font-family: Arial, sans-serif;
-}
-
-#info {
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  color: white;
-  background: rgba(0,0,0,0.6);
-  padding: 6px 10px;
-  border-radius: 6px;
-  z-index: 10;
-}
+body { margin:0; overflow:hidden; background:#000; font-family:sans-serif; }
 
 #crosshair {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 24px;
-  color: white;
-  pointer-events: none;
-  user-select: none;
-  z-index: 10;
+  position:fixed;
+  top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  color:white;
+  font-size:22px;
+  pointer-events:none;
 }
 
 #hotbar {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 10px;
-  z-index: 10;
+  position:fixed;
+  bottom:20px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:8px;
 }
 
 .slot {
-  width: 48px;
-  height: 48px;
-  border: 2px solid white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  background: rgba(0,0,0,0.5);
+  width:46px;
+  height:46px;
+  border:2px solid #fff;
+  color:white;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,.6);
 }
 
-.slot.active {
-  border-color: yellow;
+.slot.active { border-color:yellow; }
+
+#name {
+  position:fixed;
+  top:10px;
+  left:10px;
+  color:white;
 }
