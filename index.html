@@ -3,208 +3,170 @@
 <head>
 <meta charset="utf-8">
 <title>VoxelCraft</title>
-<style>
-html,body{margin:0;overflow:hidden;background:#000;font-family:arial}
-#cross{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;font-size:20px}
-#hotbar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:6px}
-.slot{
-  width:50px;height:50px;
-  border:2px solid #fff;
-  color:#fff;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  background:rgba(0,0,0,.6);
-  font-size:12px;
-}
-.active{border-color:yellow}
-.count{font-size:11px;color:#0f0}
-</style>
+<link rel="stylesheet" href="inventory.css">
 </head>
 <body>
-<div id="cross">+</div>
 
-<div id="hotbar">
-  <div class="slot active">Grass<div class="count">0</div></div>
-  <div class="slot">Dirt<div class="count">0</div></div>
-  <div class="slot">Stone<div class="count">0</div></div>
+<div id="crosshair">+</div>
+
+<!-- HOTBAR -->
+<div id="hotbar"></div>
+
+<!-- INVENTORY -->
+<div id="inventory" class="hidden">
+  <div class="grid"></div>
 </div>
 
 <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
 <script>
-// ================= BASIC SETUP =================
-const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x87ceeb);
-scene.fog=new THREE.Fog(0x87ceeb,20,120);
+// ================= BASIC =================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
 
-const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,500);
-const renderer=new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth,innerHeight);
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 500);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xffffff,.4));
-const sun=new THREE.DirectionalLight(0xffffff,1);
-sun.position.set(100,150,100);
+scene.add(new THREE.AmbientLight(0xffffff,0.5));
+const sun = new THREE.DirectionalLight(0xffffff,1);
+sun.position.set(100,200,100);
 scene.add(sun);
 
 // ================= INPUT =================
-const keys={};
+const keys = {};
 addEventListener("keydown",e=>keys[e.code]=true);
 addEventListener("keyup",e=>keys[e.code]=false);
-document.body.onclick=()=>document.body.requestPointerLock();
+document.body.onclick = ()=>document.body.requestPointerLock();
 
 // ================= MOUSE =================
 let yaw=0,pitch=0;
 addEventListener("mousemove",e=>{
   if(document.pointerLockElement!==document.body)return;
-  yaw-=e.movementX*0.002;
-  pitch-=e.movementY*0.002;
-  pitch=Math.max(-1.5,Math.min(1.5,pitch));
+  yaw -= e.movementX*0.002;
+  pitch -= e.movementY*0.002;
+  pitch = Math.max(-1.4, Math.min(1.4, pitch));
 });
 
 // ================= TEXTURES =================
-function tex(a,b){
+function texture(c1,c2){
   const c=document.createElement("canvas");
-  c.width=c.height=64;
+  c.width=c.height=32;
   const x=c.getContext("2d");
-  x.fillStyle=a;x.fillRect(0,0,64,64);
-  for(let i=0;i<400;i++){
-    x.fillStyle=b;
-    x.fillRect(Math.random()*64,Math.random()*64,2,2);
+  x.fillStyle=c1; x.fillRect(0,0,32,32);
+  for(let i=0;i<200;i++){
+    x.fillStyle=c2;
+    x.fillRect(Math.random()*32,Math.random()*32,2,2);
   }
   const t=new THREE.CanvasTexture(c);
   t.magFilter=t.minFilter=THREE.NearestFilter;
   return t;
 }
 
-const MAT=[
-  new THREE.MeshStandardMaterial({map:tex("#3aa655","#2e8b57")}), // grass
-  new THREE.MeshStandardMaterial({map:tex("#8b4513","#5c3317")}), // dirt
-  new THREE.MeshStandardMaterial({map:tex("#888","#666")})        // stone
+const BLOCK_MAT = [
+  new THREE.MeshStandardMaterial({map:texture("#3aa655","#2e8b57")}),
+  new THREE.MeshStandardMaterial({map:texture("#8b4513","#5c3317")}),
+  new THREE.MeshStandardMaterial({map:texture("#888","#666")})
 ];
 
-// ================= INVENTORY =================
-const inventory=[0,0,0];
-const slots=[...document.querySelectorAll(".slot")];
-function updateUI(){
-  slots.forEach((s,i)=>{
-    s.querySelector(".count").innerText=inventory[i];
-  });
-}
-updateUI();
-
-// ================= BLOCK SYSTEM =================
-const geo=new THREE.BoxGeometry(1,1,1);
-const blocks=new Map();
-const key=(x,y,z)=>`${x},${y},${z}`;
+// ================= BLOCKS =================
+const geo = new THREE.BoxGeometry(1,1,1);
+const blocks = new Map();
+const k=(x,y,z)=>`${x},${y},${z}`;
 
 function addBlock(x,y,z,t){
-  const m=new THREE.Mesh(geo,MAT[t]);
+  const m=new THREE.Mesh(geo,BLOCK_MAT[t]);
   m.position.set(x,y,z);
   m.userData.type=t;
   scene.add(m);
-  blocks.set(key(x,y,z),m);
+  blocks.set(k(x,y,z),m);
+}
+
+// ================= WORLD =================
+function noise(x,z){
+  return Math.sin(x*0.1)+Math.cos(z*0.1);
+}
+for(let x=-30;x<30;x++)
+for(let z=-30;z<30;z++){
+  const h=Math.floor(noise(x,z)*2+6);
+  for(let y=0;y<=h;y++){
+    addBlock(x,y,z,y==h?0:y>h-2?1:2);
+  }
 }
 
 // ================= PLAYER =================
 const player={
-  pos:new THREE.Vector3(0,20,0),
+  pos:new THREE.Vector3(0,15,0),
   vel:new THREE.Vector3(),
   size:new THREE.Vector3(0.6,1.8,0.6),
   eye:1.6,
   onGround:false
 };
 
-// ================= WORLD =================
-function noise(x,z){
-  return Math.sin(x*0.08)+Math.cos(z*0.08)+Math.sin((x+z)*0.04)*2;
-}
-
-for(let x=-35;x<35;x++)
-for(let z=-35;z<35;z++){
-  const h=Math.floor(noise(x,z)*3+8);
-  for(let y=0;y<=h;y++){
-    addBlock(x,y,z,y==h?0:y>h-2?1:2);
-  }
-}
-
-// ================= MOBS =================
-const mobs=[];
-const mobGeo=new THREE.BoxGeometry(1,1,2);
-const mobMat=new THREE.MeshStandardMaterial({color:0x8b5a2b});
-
-function spawnMob(x,z){
-  const m=new THREE.Mesh(mobGeo,mobMat);
-  m.position.set(x,10,z);
-  m.userData={
-    dir:Math.random()*Math.PI*2,
-    speed:0.02,
-    velY:0
-  };
-  scene.add(m);
-  mobs.push(m);
-}
-
-for(let i=0;i<8;i++){
-  spawnMob(
-    Math.random()*40-20,
-    Math.random()*40-20
-  );
-}
-
-// ================= COLLISION =================
-function collides(pos,size){
-  const minX=Math.floor(pos.x-size.x/2);
-  const maxX=Math.floor(pos.x+size.x/2);
-  const minY=Math.floor(pos.y);
-  const maxY=Math.floor(pos.y+size.y);
-  const minZ=Math.floor(pos.z-size.z/2);
-  const maxZ=Math.floor(pos.z+size.z/2);
-  for(let x=minX;x<=maxX;x++)
-  for(let y=minY;y<=maxY;y++)
-  for(let z=minZ;z<=maxZ;z++)
-    if(blocks.has(key(x,y,z))) return true;
+function collide(pos,size){
+  for(let x=Math.floor(pos.x-size.x/2);x<=Math.floor(pos.x+size.x/2);x++)
+  for(let y=Math.floor(pos.y);y<=Math.floor(pos.y+size.y);y++)
+  for(let z=Math.floor(pos.z-size.z/2);z<=Math.floor(pos.z+size.z/2);z++)
+    if(blocks.has(k(x,y,z))) return true;
   return false;
 }
 
-// ================= HOTBAR =================
-let selected=0;
-addEventListener("keydown",e=>{
-  if(e.key>="1"&&e.key<="3"){
-    selected=e.key-1;
-    slots.forEach((s,i)=>s.classList.toggle("active",i===selected));
-  }
-});
+// ================= INVENTORY DATA =================
+const INVENTORY_SIZE = 36;
+const inventory = Array(INVENTORY_SIZE).fill(null);
+const MAX_STACK = 64;
+let selected = 0;
 
-// ================= RAYCAST =================
-const ray=new THREE.Raycaster();
-addEventListener("mousedown",e=>{
-  ray.setFromCamera({x:0,y:0},camera);
-  const hit=ray.intersectObjects([...blocks.values()])[0];
-  if(!hit)return;
-  const p=hit.object.position;
-  const type=hit.object.userData.type;
+// ================= UI =================
+const hotbar = document.getElementById("hotbar");
+const invGrid = document.querySelector(".grid");
 
-  if(e.button===0){
-    scene.remove(hit.object);
-    blocks.delete(key(p.x,p.y,p.z));
-    inventory[type]++;
-    updateUI();
-  }
+function redrawInventory(){
+  hotbar.innerHTML="";
+  invGrid.innerHTML="";
 
-  if(e.button===2 && inventory[selected]>0){
-    const n=hit.face.normal;
-    const x=p.x+n.x,y=p.y+n.y,z=p.z+n.z;
-    if(!blocks.has(key(x,y,z))){
-      addBlock(x,y,z,selected);
-      inventory[selected]--;
-      updateUI();
+  inventory.forEach((slot,i)=>{
+    const d=document.createElement("div");
+    d.className="slot"+(i===selected?" active":"");
+    if(slot){
+      d.innerText=slot.count;
+      d.style.background=slot.color;
     }
-  }
-});
-addEventListener("contextmenu",e=>e.preventDefault());
+    if(i<9) hotbar.appendChild(d);
+    else invGrid.appendChild(d);
+  });
+}
+redrawInventory();
+
+// ================= ANIMAL (COW) =================
+function Cow(x,z){
+  const g=new THREE.Group();
+
+  const body=new THREE.Mesh(
+    new THREE.BoxGeometry(1.5,1,2.5),
+    new THREE.MeshStandardMaterial({color:0x8b5a2b})
+  );
+  body.position.y=1;
+
+  const head=new THREE.Mesh(
+    new THREE.BoxGeometry(1,1,1),
+    new THREE.MeshStandardMaterial({color:0x7a4a2e})
+  );
+  head.position.set(0,1.2,1.8);
+
+  g.add(body,head);
+  g.position.set(x,10,z);
+  g.userData={velY:0,dir:Math.random()*Math.PI*2};
+
+  scene.add(g);
+  return g;
+}
+
+const mobs=[];
+for(let i=0;i<6;i++){
+  mobs.push(Cow(Math.random()*30-15,Math.random()*30-15));
+}
 
 // ================= LOOP =================
 function animate(){
@@ -216,58 +178,42 @@ function animate(){
 
   const forward=new THREE.Vector3();
   camera.getWorldDirection(forward);
-  forward.y=0;forward.normalize();
+  forward.y=0; forward.normalize();
   const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0));
 
-  const speed=keys.ShiftLeft?.15:.08;
+  let speed=0.08;
   const move=new THREE.Vector3();
-  if(keys.KeyW)move.add(forward);
-  if(keys.KeyS)move.sub(forward);
-  if(keys.KeyA)move.sub(right);
-  if(keys.KeyD)move.add(right);
+  if(keys.KeyW) move.add(forward);
+  if(keys.KeyS) move.sub(forward);
+  if(keys.KeyA) move.sub(right);
+  if(keys.KeyD) move.add(right);
   move.normalize().multiplyScalar(speed);
 
-  // X
   player.pos.x+=move.x;
-  if(collides(player.pos,player.size))player.pos.x-=move.x;
-
-  // Z
+  if(collide(player.pos,player.size)) player.pos.x-=move.x;
   player.pos.z+=move.z;
-  if(collides(player.pos,player.size))player.pos.z-=move.z;
+  if(collide(player.pos,player.size)) player.pos.z-=move.z;
 
-  // Gravity
   player.vel.y-=0.02;
   player.pos.y+=player.vel.y;
-  if(collides(player.pos,player.size)){
+  if(collide(player.pos,player.size)){
     player.pos.y-=player.vel.y;
     player.vel.y=0;
     player.onGround=true;
-  }else player.onGround=false;
+  } else player.onGround=false;
 
-  if(keys.Space&&player.onGround){
-    player.vel.y=.35;
-    player.onGround=false;
-  }
+  if(keys.Space&&player.onGround) player.vel.y=0.35;
 
-  // MOBS UPDATE
   mobs.forEach(m=>{
     m.userData.velY-=0.02;
     m.position.y+=m.userData.velY;
-    if(collides(m.position,new THREE.Vector3(1,1,2))){
-      m.position.y-=m.userData.velY;
-      m.userData.velY=0;
-    }
-    m.position.x+=Math.sin(m.userData.dir)*m.userData.speed;
-    m.position.z+=Math.cos(m.userData.dir)*m.userData.speed;
-    if(Math.random()<0.01)m.userData.dir+=Math.random()-0.5;
+    if(m.position.y<2){m.position.y=2;m.userData.velY=0;}
+    m.position.x+=Math.sin(m.userData.dir)*0.02;
+    m.position.z+=Math.cos(m.userData.dir)*0.02;
+    if(Math.random()<0.01) m.userData.dir+=Math.random()-0.5;
   });
 
-  camera.position.set(
-    player.pos.x,
-    player.pos.y+player.eye,
-    player.pos.z
-  );
-
+  camera.position.set(player.pos.x,player.pos.y+player.eye,player.pos.z);
   renderer.render(scene,camera);
 }
 animate();
