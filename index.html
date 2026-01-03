@@ -7,7 +7,7 @@
 html,body{margin:0;overflow:hidden;background:#000;font-family:arial}
 #cross{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;font-size:20px}
 #hotbar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:6px}
-.slot{width:44px;height:44px;border:2px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+.slot{width:44px;height:44px;border:2px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)}
 .active{border-color:yellow}
 </style>
 </head>
@@ -24,20 +24,25 @@ html,body{margin:0;overflow:hidden;background:#000;font-family:arial}
 // ================= SCENE =================
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x87ceeb);
-const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+scene.fog=new THREE.Fog(0x87ceeb,20,120);
+
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,500);
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
 // ================= LIGHT =================
-scene.add(new THREE.AmbientLight(0xffffff,.4));
+scene.add(new THREE.AmbientLight(0xffffff,.45));
 const sun=new THREE.DirectionalLight(0xffffff,1);
-sun.position.set(50,100,30);
+sun.position.set(100,150,100);
+sun.castShadow=true;
 scene.add(sun);
 
 // ================= PLAYER =================
 const player={
-  pos:new THREE.Vector3(0,20,0),
+  pos:new THREE.Vector3(0,30,0),
   vel:new THREE.Vector3(),
   onGround:false,
   eye:1.6
@@ -58,33 +63,67 @@ addEventListener("mousemove",e=>{
   pitch=Math.max(-1.5,Math.min(1.5,pitch));
 });
 
-// ================= BLOCKS =================
-const blocks=new Map();
-const geo=new THREE.BoxGeometry(1,1,1);
-const mats=[
-  new THREE.MeshStandardMaterial({color:0x3aa655}), // grass
-  new THREE.MeshStandardMaterial({color:0x8b4513}), // dirt
-  new THREE.MeshStandardMaterial({color:0x888888})  // stone
+// ================= TEXTURES =================
+function tex(a,b){
+  const c=document.createElement("canvas");
+  c.width=c.height=64;
+  const x=c.getContext("2d");
+  x.fillStyle=a;x.fillRect(0,0,64,64);
+  for(let i=0;i<400;i++){
+    x.fillStyle=b;
+    x.fillRect(Math.random()*64,Math.random()*64,2,2);
+  }
+  const t=new THREE.CanvasTexture(c);
+  t.magFilter=t.minFilter=THREE.NearestFilter;
+  return t;
+}
+
+const MAT=[
+  new THREE.MeshStandardMaterial({map:tex("#3aa655","#2e8b57")}), // grass
+  new THREE.MeshStandardMaterial({map:tex("#8b4513","#5c3317")}), // dirt
+  new THREE.MeshStandardMaterial({map:tex("#888","#666")}),       // stone
+  new THREE.MeshStandardMaterial({map:tex("#5b3a1e","#3e2614")}), // wood
+  new THREE.MeshStandardMaterial({map:tex("#2f7d32","#1e5f25")})  // leaves
 ];
+
+// ================= BLOCK SYSTEM =================
+const geo=new THREE.BoxGeometry(1,1,1);
+const blocks=new Map();
 const key=(x,y,z)=>`${x},${y},${z}`;
+
 function addBlock(x,y,z,t){
-  const m=new THREE.Mesh(geo,mats[t]);
+  const m=new THREE.Mesh(geo,MAT[t]);
   m.position.set(x,y,z);
   scene.add(m);
   blocks.set(key(x,y,z),m);
 }
 
-// ================= TERRAIN (CHUNKS) =================
-function height(x,z){
-  return Math.floor(
-    Math.sin(x*.15)+Math.cos(z*.15)+Math.sin((x+z)*.1)
-  )+3;
+// ================= NOISE =================
+function noise(x,z){
+  return Math.sin(x*0.08)+Math.cos(z*0.08)+
+         Math.sin((x+z)*0.04)*2;
 }
-for(let x=-32;x<32;x++)
-for(let z=-32;z<32;z++){
-  const h=height(x,z);
+
+// ================= TERRAIN + MOUNTAINS + CAVES =================
+const SIZE=48;
+for(let x=-SIZE;x<SIZE;x++)
+for(let z=-SIZE;z<SIZE;z++){
+  const h=Math.floor(noise(x,z)*3+8);
   for(let y=0;y<=h;y++){
+    // caves
+    if(y>2 && Math.sin(x*0.3+y*0.4+z*0.3)>0.7) continue;
     addBlock(x,y,z,y==h?0:y>h-2?1:2);
+  }
+
+  // trees
+  if(Math.random()<0.04 && h>7){
+    const th=3+Math.floor(Math.random()*3);
+    for(let t=1;t<=th;t++) addBlock(x,h+t,z,3);
+    for(let lx=-2;lx<=2;lx++)
+    for(let lz=-2;lz<=2;lz++)
+    for(let ly=th-1;ly<=th+1;ly++)
+      if(Math.abs(lx)+Math.abs(lz)<4)
+        addBlock(x+lx,h+ly,z+lz,4);
   }
 }
 
@@ -104,7 +143,6 @@ addEventListener("mousedown",e=>{
   ray.setFromCamera({x:0,y:0},camera);
   const hit=ray.intersectObjects([...blocks.values()])[0];
   if(!hit)return;
-
   const p=hit.object.position;
   if(e.button===0){
     scene.remove(hit.object);
@@ -141,8 +179,13 @@ function animate(){
   if(keys.Space&&player.onGround){player.vel.y=.35;player.onGround=false}
   player.pos.add(player.vel);
 
-  if(player.pos.y<height(Math.round(player.pos.x),Math.round(player.pos.z))+1){
-    player.pos.y=height(Math.round(player.pos.x),Math.round(player.pos.z))+1;
+  const groundY=Math.floor(noise(
+    Math.round(player.pos.x),
+    Math.round(player.pos.z)
+  )*3+8)+1;
+
+  if(player.pos.y<groundY){
+    player.pos.y=groundY;
     player.vel.y=0;
     player.onGround=true;
   }
