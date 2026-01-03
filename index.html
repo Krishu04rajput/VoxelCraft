@@ -30,23 +30,14 @@ const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,500);
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(devicePixelRatio);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
 // ================= LIGHT =================
 scene.add(new THREE.AmbientLight(0xffffff,.45));
 const sun=new THREE.DirectionalLight(0xffffff,1);
 sun.position.set(100,150,100);
-sun.castShadow=true;
 scene.add(sun);
-
-// ================= PLAYER =================
-const player={
-  pos:new THREE.Vector3(0,30,0),
-  vel:new THREE.Vector3(),
-  onGround:false,
-  eye:1.6
-};
 
 // ================= INPUT =================
 const keys={};
@@ -79,43 +70,50 @@ function tex(a,b){
 }
 
 const MAT=[
-  new THREE.MeshStandardMaterial({map:tex("#3aa655","#2e8b57")}), // grass
-  new THREE.MeshStandardMaterial({map:tex("#8b4513","#5c3317")}), // dirt
-  new THREE.MeshStandardMaterial({map:tex("#888","#666")}),       // stone
-  new THREE.MeshStandardMaterial({map:tex("#5b3a1e","#3e2614")}), // wood
-  new THREE.MeshStandardMaterial({map:tex("#2f7d32","#1e5f25")})  // leaves
+  new THREE.MeshStandardMaterial({map:tex("#3aa655","#2e8b57")}),
+  new THREE.MeshStandardMaterial({map:tex("#8b4513","#5c3317")}),
+  new THREE.MeshStandardMaterial({map:tex("#888","#666")}),
+  new THREE.MeshStandardMaterial({map:tex("#5b3a1e","#3e2614")}),
+  new THREE.MeshStandardMaterial({map:tex("#2f7d32","#1e5f25")})
 ];
 
 // ================= BLOCK SYSTEM =================
 const geo=new THREE.BoxGeometry(1,1,1);
 const blocks=new Map();
+const drops=[];
 const key=(x,y,z)=>`${x},${y},${z}`;
 
 function addBlock(x,y,z,t){
   const m=new THREE.Mesh(geo,MAT[t]);
   m.position.set(x,y,z);
+  m.userData.type=t;
   scene.add(m);
   blocks.set(key(x,y,z),m);
 }
 
+// ================= PLAYER =================
+const player={
+  pos:new THREE.Vector3(0,30,0),
+  vel:new THREE.Vector3(),
+  size:new THREE.Vector3(0.6,1.8,0.6),
+  eye:1.6,
+  onGround:false
+};
+
 // ================= NOISE =================
 function noise(x,z){
-  return Math.sin(x*0.08)+Math.cos(z*0.08)+
-         Math.sin((x+z)*0.04)*2;
+  return Math.sin(x*0.08)+Math.cos(z*0.08)+Math.sin((x+z)*0.04)*2;
 }
 
-// ================= TERRAIN + MOUNTAINS + CAVES =================
-const SIZE=48;
+// ================= WORLD =================
+const SIZE=40;
 for(let x=-SIZE;x<SIZE;x++)
 for(let z=-SIZE;z<SIZE;z++){
   const h=Math.floor(noise(x,z)*3+8);
   for(let y=0;y<=h;y++){
-    // caves
     if(y>2 && Math.sin(x*0.3+y*0.4+z*0.3)>0.7) continue;
     addBlock(x,y,z,y==h?0:y>h-2?1:2);
   }
-
-  // trees
   if(Math.random()<0.04 && h>7){
     const th=3+Math.floor(Math.random()*3);
     for(let t=1;t<=th;t++) addBlock(x,h+t,z,3);
@@ -125,6 +123,23 @@ for(let z=-SIZE;z<SIZE;z++){
       if(Math.abs(lx)+Math.abs(lz)<4)
         addBlock(x+lx,h+ly,z+lz,4);
   }
+}
+
+// ================= COLLISION =================
+function collides(pos){
+  const minX=Math.floor(pos.x-player.size.x/2);
+  const maxX=Math.floor(pos.x+player.size.x/2);
+  const minY=Math.floor(pos.y);
+  const maxY=Math.floor(pos.y+player.size.y);
+  const minZ=Math.floor(pos.z-player.size.z/2);
+  const maxZ=Math.floor(pos.z+player.size.z/2);
+
+  for(let x=minX;x<=maxX;x++)
+  for(let y=minY;y<=maxY;y++)
+  for(let z=minZ;z<=maxZ;z++)
+    if(blocks.has(key(x,y,z))) return true;
+
+  return false;
 }
 
 // ================= HOTBAR =================
@@ -147,10 +162,19 @@ addEventListener("mousedown",e=>{
   if(e.button===0){
     scene.remove(hit.object);
     blocks.delete(key(p.x,p.y,p.z));
+
+    // DROP
+    const d=new THREE.Mesh(geo,MAT[hit.object.userData.type]);
+    d.scale.set(.4,.4,.4);
+    d.position.copy(p);
+    d.userData.vel=Math.random()*0.1;
+    scene.add(d);
+    drops.push(d);
   }
   if(e.button===2){
     const n=hit.face.normal;
-    addBlock(p.x+n.x,p.y+n.y,p.z+n.z,selected);
+    const x=p.x+n.x,y=p.y+n.y,z=p.z+n.z;
+    if(!blocks.has(key(x,y,z))) addBlock(x,y,z,selected);
   }
 });
 addEventListener("contextmenu",e=>e.preventDefault());
@@ -165,29 +189,47 @@ function animate(){
 
   const forward=new THREE.Vector3();
   camera.getWorldDirection(forward);
-  forward.y=0; forward.normalize();
+  forward.y=0;forward.normalize();
   const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0));
 
   const speed=keys.ShiftLeft?.15:.08;
-  if(keys.KeyW)player.pos.add(forward.clone().multiplyScalar(speed));
-  if(keys.KeyS)player.pos.add(forward.clone().multiplyScalar(-speed));
-  if(keys.KeyA)player.pos.add(right.clone().multiplyScalar(-speed));
-  if(keys.KeyD)player.pos.add(right.clone().multiplyScalar(speed));
+  const move=new THREE.Vector3();
+  if(keys.KeyW)move.add(forward);
+  if(keys.KeyS)move.sub(forward);
+  if(keys.KeyA)move.sub(right);
+  if(keys.KeyD)move.add(right);
+  move.normalize().multiplyScalar(speed);
 
-  // gravity
+  // X
+  player.pos.x+=move.x;
+  if(collides(player.pos)) player.pos.x-=move.x;
+
+  // Z
+  player.pos.z+=move.z;
+  if(collides(player.pos)) player.pos.z-=move.z;
+
+  // Gravity
   player.vel.y-=0.02;
-  if(keys.Space&&player.onGround){player.vel.y=.35;player.onGround=false}
-  player.pos.add(player.vel);
-
-  const groundY=Math.floor(noise(
-    Math.round(player.pos.x),
-    Math.round(player.pos.z)
-  )*3+8)+1;
-
-  if(player.pos.y<groundY){
-    player.pos.y=groundY;
+  player.pos.y+=player.vel.y;
+  if(collides(player.pos)){
+    player.pos.y-=player.vel.y;
     player.vel.y=0;
     player.onGround=true;
+  } else player.onGround=false;
+
+  if(keys.Space&&player.onGround){
+    player.vel.y=.35;
+    player.onGround=false;
+  }
+
+  // DROPS
+  for(let i=drops.length-1;i>=0;i--){
+    const d=drops[i];
+    d.position.y-=0.05;
+    if(d.position.distanceTo(player.pos)<1){
+      scene.remove(d);
+      drops.splice(i,1);
+    }
   }
 
   camera.position.set(
