@@ -1,141 +1,123 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
 <title>VoxelCraft</title>
 <style>
-body { margin:0; overflow:hidden; background:#000; font-family:Arial }
-#crosshair {
-  position:fixed;
-  left:50%; top:50%;
+body{margin:0;overflow:hidden;background:#000}
+#crosshair{
+  position:fixed;left:50%;top:50%;
   transform:translate(-50%,-50%);
-  color:white; font-size:18px;
+  color:white;font-size:18px
 }
-#hotbar {
-  position:fixed;
-  bottom:20px;
-  left:50%;
-  transform:translateX(-50%);
-  display:flex;
-  gap:6px;
-}
-.slot {
-  width:48px; height:48px;
-  border:2px solid #999;
-  background:#222;
-  color:#0f0;
-  font-size:12px;
-  display:flex;
-  justify-content:flex-end;
-  align-items:flex-end;
-  padding:3px;
-}
-.active { border-color:yellow }
 </style>
 </head>
 <body>
-
 <div id="crosshair">+</div>
-<div id="hotbar"></div>
 
 <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
 <script>
-// ================== SCENE ==================
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
+// ================= BASIC =================
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87ceeb);
 
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({ antialias:true });
-renderer.setSize(innerWidth, innerHeight);
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
 renderer.setPixelRatio(devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-const sun = new THREE.DirectionalLight(0xffffff, 1);
+scene.add(new THREE.AmbientLight(0xffffff,0.6));
+const sun=new THREE.DirectionalLight(0xffffff,1);
 sun.position.set(100,200,100);
 scene.add(sun);
 
-// ================== INPUT ==================
-const keys = {};
-addEventListener("keydown", e => keys[e.code] = true);
-addEventListener("keyup", e => keys[e.code] = false);
-document.body.onclick = () => document.body.requestPointerLock();
+// ================= INPUT =================
+const keys={};
+addEventListener("keydown",e=>keys[e.code]=true);
+addEventListener("keyup",e=>keys[e.code]=false);
+document.body.onclick=()=>document.body.requestPointerLock();
 
-// ================== MOUSE ==================
-let yaw = 0, pitch = 0;
-addEventListener("mousemove", e => {
-  if (document.pointerLockElement !== document.body) return;
-  yaw -= e.movementX * 0.002;
-  pitch -= e.movementY * 0.002;
-  pitch = Math.max(-1.4, Math.min(1.4, pitch));
+// ================= MOUSE =================
+let yaw=0,pitch=0;
+addEventListener("mousemove",e=>{
+  if(document.pointerLockElement!==document.body)return;
+  yaw-=e.movementX*0.002;
+  pitch-=e.movementY*0.002;
+  pitch=Math.max(-1.4,Math.min(1.4,pitch));
 });
 
-// ================== TEXTURES ==================
-function makeTexture(c1,c2){
+// ================= TEXTURES =================
+function tex(c1,c2){
   const c=document.createElement("canvas");
-  c.width=c.height=32;
+  c.width=c.height=16;
   const x=c.getContext("2d");
-  x.fillStyle=c1; x.fillRect(0,0,32,32);
-  for(let i=0;i<200;i++){
+  x.fillStyle=c1;x.fillRect(0,0,16,16);
+  for(let i=0;i<40;i++){
     x.fillStyle=c2;
-    x.fillRect(Math.random()*32,Math.random()*32,2,2);
+    x.fillRect(Math.random()*16,Math.random()*16,2,2);
   }
   const t=new THREE.CanvasTexture(c);
   t.magFilter=t.minFilter=THREE.NearestFilter;
   return t;
 }
-
-const materials = [
-  new THREE.MeshStandardMaterial({ map:makeTexture("#3cb371","#2e8b57") }), // grass
-  new THREE.MeshStandardMaterial({ map:makeTexture("#8b4513","#5c3317") }), // dirt
-  new THREE.MeshStandardMaterial({ map:makeTexture("#888","#666") }),       // stone
-  new THREE.MeshStandardMaterial({ map:makeTexture("#228b22","#145214") }), // leaves
-  new THREE.MeshStandardMaterial({ map:makeTexture("#a0522d","#6b3e26") })  // wood
+const mats=[
+  new THREE.MeshStandardMaterial({map:tex("#3cb371","#2e8b57")}),
+  new THREE.MeshStandardMaterial({map:tex("#8b4513","#5c3317")}),
+  new THREE.MeshStandardMaterial({map:tex("#888","#666")})
 ];
 
-// ================== BLOCK SYSTEM ==================
-const blockGeo = new THREE.BoxGeometry(1,1,1);
-const blocks = new Map();
-const key = (x,y,z)=>`${x},${y},${z}`;
+// ================= CHUNK SYSTEM =================
+const CHUNK=16;
+const chunks=new Map();
+const blockGeo=new THREE.BoxGeometry(1,1,1);
 
-function addBlock(x,y,z,type){
-  const b = new THREE.Mesh(blockGeo, materials[type]);
-  b.position.set(x,y,z);
-  b.userData.type = type;
-  scene.add(b);
-  blocks.set(key(x,y,z), b);
-}
+function chunkKey(cx,cz){return cx+","+cz;}
 
-// ================== TERRAIN ==================
 function height(x,z){
-  return Math.floor(
-    Math.sin(x*0.08)*4 +
-    Math.cos(z*0.08)*4 +
-    Math.sin((x+z)*0.05)*3 + 8
-  );
+  return Math.floor(Math.sin(x*0.1)*4+Math.cos(z*0.1)*4+8);
 }
 
-for(let x=-40;x<40;x++){
-  for(let z=-40;z<40;z++){
-    const h = height(x,z);
+function generateChunk(cx,cz){
+  const group=new THREE.Group();
+  const blocks=new Map();
+
+  for(let x=0;x<CHUNK;x++)
+  for(let z=0;z<CHUNK;z++){
+    const wx=cx*CHUNK+x;
+    const wz=cz*CHUNK+z;
+    const h=height(wx,wz);
     for(let y=0;y<=h;y++){
-      let t = y===h ? 0 : y>h-3 ? 1 : 2;
-      addBlock(x,y,z,t);
+      const t=y===h?0:y>h-2?1:2;
+      const b=new THREE.Mesh(blockGeo,mats[t]);
+      b.position.set(wx,y,wz);
+      b.userData={x:wx,y,z:wz};
+      group.add(b);
+      blocks.set(wx+","+y+","+wz,b);
     }
-    // trees
-    if(Math.random()<0.03){
-      for(let i=1;i<5;i++) addBlock(x,h+i,z,4);
-      for(let dx=-2;dx<=2;dx++)
-      for(let dz=-2;dz<=2;dz++)
-      for(let dy=3;dy<=5;dy++)
-        if(Math.abs(dx)+Math.abs(dz)<4)
-          addBlock(x+dx,h+dy,z+dz,3);
+  }
+  scene.add(group);
+  chunks.set(chunkKey(cx,cz),{group,blocks});
+}
+
+function updateChunks(px,pz){
+  const cx=Math.floor(px/CHUNK);
+  const cz=Math.floor(pz/CHUNK);
+  for(let x=cx-2;x<=cx+2;x++)
+  for(let z=cz-2;z<=cz+2;z++){
+    if(!chunks.has(chunkKey(x,z))) generateChunk(x,z);
+  }
+  for(const [k,v] of chunks){
+    const [x,z]=k.split(",").map(Number);
+    if(Math.abs(x-cx)>3||Math.abs(z-cz)>3){
+      scene.remove(v.group);
+      chunks.delete(k);
     }
   }
 }
 
-// ================== PLAYER ==================
-const player = {
+// ================= PLAYER =================
+const player={
   pos:new THREE.Vector3(0,20,0),
   vel:new THREE.Vector3(),
   size:new THREE.Vector3(0.6,1.8,0.6),
@@ -144,37 +126,41 @@ const player = {
 };
 
 function collide(p){
-  for(let x=Math.floor(p.x-player.size.x/2);x<=Math.floor(p.x+player.size.x/2);x++)
-  for(let y=Math.floor(p.y);y<=Math.floor(p.y+player.size.y);y++)
-  for(let z=Math.floor(p.z-player.size.z/2);z<=Math.floor(p.z+player.size.z/2);z++)
-    if(blocks.has(key(x,y,z))) return true;
+  for(const ch of chunks.values()){
+    for(const b of ch.blocks.values()){
+      const d=b.position;
+      if(
+        Math.abs(p.x-d.x)<0.8 &&
+        p.y<d.y+1.8 && p.y+1.8>d.y &&
+        Math.abs(p.z-d.z)<0.8
+      ) return true;
+    }
+  }
   return false;
 }
 
-// ================== INVENTORY ==================
-const inventory = Array(9).fill(0);
-let selected = 0;
-const hotbar = document.getElementById("hotbar");
+// ================= BLOCK BREAK + DROP =================
+const ray=new THREE.Raycaster();
+const drops=[];
 
-function drawHotbar(){
-  hotbar.innerHTML="";
-  inventory.forEach((v,i)=>{
-    const d=document.createElement("div");
-    d.className="slot"+(i===selected?" active":"");
-    d.textContent=v||"";
-    hotbar.appendChild(d);
-  });
-}
-drawHotbar();
-
-addEventListener("keydown",e=>{
-  if(e.code.startsWith("Digit")){
-    selected = Number(e.code.slice(5))-1;
-    drawHotbar();
+addEventListener("mousedown",()=>{
+  ray.setFromCamera(new THREE.Vector2(0,0),camera);
+  const hits=ray.intersectObjects(scene.children,true);
+  if(hits.length){
+    const b=hits[0].object;
+    scene.remove(b);
+    for(const ch of chunks.values()){
+      for(const [k,v] of ch.blocks)
+        if(v===b) ch.blocks.delete(k);
+    }
+    const d=new THREE.Mesh(blockGeo,mats[1]);
+    d.position.copy(b.position);
+    drops.push(d);
+    scene.add(d);
   }
 });
 
-// ================== GAME LOOP ==================
+// ================= LOOP =================
 function loop(){
   requestAnimationFrame(loop);
 
@@ -182,16 +168,18 @@ function loop(){
   camera.rotation.y=yaw;
   camera.rotation.x=pitch;
 
-  const forward = new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
-  const right = new THREE.Vector3(Math.sin(yaw+Math.PI/2),0,Math.cos(yaw+Math.PI/2));
-  const move = new THREE.Vector3();
+  const forward=new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.y=0;forward.normalize();
+  const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0));
 
+  const move=new THREE.Vector3();
   if(keys.KeyW) move.add(forward);
   if(keys.KeyS) move.sub(forward);
   if(keys.KeyA) move.sub(right);
   if(keys.KeyD) move.add(right);
 
-  if(move.lengthSq()>0){
+  if(move.lengthSq()){
     move.normalize().multiplyScalar(0.1);
     player.pos.x+=move.x;
     if(collide(player.pos)) player.pos.x-=move.x;
@@ -207,7 +195,16 @@ function loop(){
     player.onGround=true;
   } else player.onGround=false;
 
-  if(keys.Space && player.onGround) player.vel.y=0.35;
+  if(keys.Space&&player.onGround) player.vel.y=0.35;
+
+  drops.forEach((d,i)=>{
+    if(d.position.distanceTo(player.pos)<1){
+      scene.remove(d);
+      drops.splice(i,1);
+    }
+  });
+
+  updateChunks(player.pos.x,player.pos.z);
 
   camera.position.set(player.pos.x,player.pos.y+player.eye,player.pos.z);
   renderer.render(scene,camera);
