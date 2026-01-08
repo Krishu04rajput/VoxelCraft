@@ -1,0 +1,47 @@
+using UnityEngine;
+
+public class PlayerController : MonoBehaviour
+{
+    public float moveSpeed = 5f;
+    public float sensitivity = 250f;
+    public float gravity = -9.81f;
+
+    CharacterController controller;
+    Vector3 velocity;
+    Transform cam;
+
+    float camPitch = 0f;
+
+    void Start()
+    {
+        controller = GetComponent<CharacterController>();
+        cam = Camera.main.transform;
+    }
+
+    void Update()
+    {
+        // Mouse Look
+        float mouseX = Input.GetAxis("Mouse X") * sensitivity * Time.deltaTime;
+        float mouseY = Input.GetAxis("Mouse Y") * sensitivity * Time.deltaTime;
+
+        camPitch -= mouseY;
+        camPitch = Mathf.Clamp(camPitch, -85f, 85f);
+        cam.localEulerAngles = new Vector3(camPitch, 0, 0);
+
+        transform.Rotate(Vector3.up * mouseX);
+
+        // Movement
+        float x = Input.GetAxis("Horizontal");  // A,D
+        float z = Input.GetAxis("Vertical");    // W,S
+
+        Vector3 move = transform.right * x + transform.forward * z;
+        controller.Move(move * moveSpeed * Time.deltaTime);
+
+        // Gravity
+        if (controller.isGrounded && velocity.y < 0)
+            velocity.y = -2f;
+
+        velocity.y += gravity * Time.deltaTime;
+        controller.Move(velocity * Time.deltaTime);
+    }
+}
