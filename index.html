@@ -1,19 +1,72 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>VoxelCraft</title>
-    <style>
-        body { margin:0; overflow:hidden; }
-        canvas { display:block; }
-    </style>
+<meta charset="UTF-8">
+<title>3D Block Game</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #000;
+        width: 100%;
+        height: 100%;
+        font-family: sans-serif;
+        user-select: none;
+    }
+
+    canvas {
+        display: block;
+    }
+
+    #lockScreen {
+        position: absolute;
+        top:0;
+        left:0;
+        right:0;
+        bottom:0;
+        background:#111;
+        color:white;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        flex-direction:column;
+        font-size:20px;
+        cursor:pointer;
+    }
+</style>
+
+<!-- THREE.js CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r158/three.min.js"></script>
 </head>
 <body>
-<script type="module">
-import Engine from "./engine/engine.js";
 
-const engine = new Engine();
-engine.start();
+<div id="lockScreen">
+    <div>Click to Play</div>
+    <small style="opacity:0.7">PointerLock Enabled</small>
+</div>
+
+<script type="module">
+import { Game } from './main.js';
+
+const lock = document.getElementById('lockScreen');
+let game;
+
+lock.addEventListener('click', () => {
+    document.body.requestPointerLock();
+});
+
+document.addEventListener('pointerlockchange', () => {
+    if (document.pointerLockElement === document.body) {
+        lock.style.display = 'none';
+        if (!game) game = new Game();
+    } else {
+        lock.style.display = 'flex';
+    }
+});
 </script>
+
 </body>
 </html>
